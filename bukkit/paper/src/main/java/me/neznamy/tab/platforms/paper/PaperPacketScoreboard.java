@@ -2,6 +2,7 @@ package me.neznamy.tab.platforms.paper;
 
 import lombok.NonNull;
 import lombok.SneakyThrows;
+import lombok.extern.slf4j.Slf4j;
 import me.neznamy.tab.platforms.bukkit.BukkitTabPlayer;
 import me.neznamy.tab.shared.TAB;
 import me.neznamy.tab.shared.platform.decorators.SafeScoreboard;
@@ -10,6 +11,7 @@ import net.minecraft.ChatFormatting;
 import net.minecraft.network.chat.numbers.FixedFormat;
 import net.minecraft.network.protocol.Packet;
 import net.minecraft.network.protocol.game.*;
+import net.minecraft.world.scores.Objective;
 import net.minecraft.world.scores.PlayerTeam;
 import net.minecraft.world.scores.Scoreboard;
 import net.minecraft.world.scores.criteria.ObjectiveCriteria;
@@ -23,6 +25,7 @@ import java.util.Optional;
 /**
  * Scoreboard implementation using direct mojang-mapped code for versions 1.20.5+.
  */
+@Slf4j
 @SuppressWarnings("unused") // Used via reflection
 public class PaperPacketScoreboard extends SafeScoreboard<BukkitTabPlayer> {
 
@@ -52,8 +55,7 @@ public class PaperPacketScoreboard extends SafeScoreboard<BukkitTabPlayer> {
         super(player);
     }
 
-    @Override
-    public void registerObjective(@NonNull Objective objective) {
+    private void assignPlatformObjective(@NonNull Objective objective){
         net.minecraft.world.scores.Objective obj = new net.minecraft.world.scores.Objective(
                 dummyScoreboard,
                 objective.getName(),
@@ -64,8 +66,12 @@ public class PaperPacketScoreboard extends SafeScoreboard<BukkitTabPlayer> {
                 objective.getNumberFormat() == null ? null : objective.getNumberFormat().toFixedFormat(FixedFormat::new)
         );
         objective.setPlatformObjective(obj);
-        sendPacket(new ClientboundSetObjectivePacket(obj, ObjectiveAction.REGISTER));
-        sendPacket(new ClientboundSetDisplayObjectivePacket(net.minecraft.world.scores.DisplaySlot.values()[objective.getDisplaySlot().ordinal()], obj));
+    }
+    @Override
+    public void registerObjective(@NonNull Objective objective) {
+        this.assignPlatformObjective(objective);
+        sendPacket(new ClientboundSetObjectivePacket((net.minecraft.world.scores.Objective) objective.getPlatformObjective(), ObjectiveAction.REGISTER));
+        sendPacket(new ClientboundSetDisplayObjectivePacket(net.minecraft.world.scores.DisplaySlot.values()[objective.getDisplaySlot().ordinal()], (net.minecraft.world.scores.Objective) objective.getPlatformObjective()));
     }
 
     @Override
@@ -76,6 +82,10 @@ public class PaperPacketScoreboard extends SafeScoreboard<BukkitTabPlayer> {
     @Override
     public void updateObjective(@NonNull Objective objective) {
         net.minecraft.world.scores.Objective obj = (net.minecraft.world.scores.Objective) objective.getPlatformObjective();
+        if(obj == null){
+            this.assignPlatformObjective(objective);
+            obj = (net.minecraft.world.scores.Objective) objective.getPlatformObjective();
+        }
         obj.setDisplayName(objective.getTitle().convert(player.getVersion()));
         obj.setRenderType(ObjectiveCriteria.RenderType.values()[objective.getHealthDisplay().ordinal()]);
         sendPacket(new ClientboundSetObjectivePacket(obj, ObjectiveAction.UPDATE));
